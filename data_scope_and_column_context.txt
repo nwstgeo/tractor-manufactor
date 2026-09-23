@@ -1,0 +1,81 @@
+Locked spec — Tractor Supply Chain synthetic data + design (2026-09-23)
+
+SCOPE
+- In: supplier data + internal ops + macro numeric indicators.
+- Out: unstructured news text, Ag/economics LLM agents, market-expansion logic,
+  Buy-vs-Finance-vs-Repair analysis, tractor repair (noted future expansion).
+- Component Failure definition (prompt): defect preventing manufacture (in scope)
+  OR in-use breakage (out of scope, future expansion).
+- F runs in indicator mode only (Inflation_Rate, Market_Trend_Index condition forecasts).
+- Surviving LLM agents (3): Tractor Failure Compilation; Summarize Supply Delay Trends; 
+  Summarize Order/Servicing/Repair/Feedback Data.
+
+SCHEMA (normalized + flat view)
+- Parent `events` (10k rows, uuid PK UUID4): uuid, Date, Tractor_Model, Warehouse_Location,
+  Supplier, Demand_Units, Backorder_Qty, Production_Plan_Qty, Inflation_Rate, Market_Trend_Index.
+- Child `parts` (~50k rows, FK uuid): uuid, Part_SKU, Supplier_Delay_Days,
+  Component_Failure_Rate, Inventory_Levels (part-units), Unit_Cost.
+- Flat view: derived join for model training (not separately validated).
+- BOM: Simple 5-part, same set all models (ENG-01, TRN-02, HYD-03, ELEC-04, CHS-05),
+  any supplier supplies any part. 1 unit of each part per tractor.
+
+GENERATION RULES (all seeded)
+- Dates: 2020-01-01–2023-12-30. Demand per Model×Warehouse×Day:
+  round(Base × Seasonal × Trend + Noise), clamp 50–499.
+  Bases: TX-100 250, TX-200 270, TX-300 260, TX-400 280, TX-500 300.
+  Warehouse mult: CA 1.10, TX 1.05, FL 1.00, IL 0.95, NY 0.90.
+  Seasonal: 1 + 0.25*sin(2π*(dayofyear-90)/365). Trend: +2%/yr. Noise ±15%.
+  (By-design diff: reference is flat uniform, no seasonality/trend.)
+- Supplier delay tiers (uniform ±7, clamp 0–29; means): E 9, A 13, B 15, C 16, D 18.
+  Overall mean ~14.2 (ref ~14.66). Exogenous shared-world process, full-fill arrivals.
+- Part failure tiers (uniform ±0.02, clamp 0–0.10; manufacturing-defect only):
+  ENG-01 0.07, ELEC-04 0.06, TRN-02 0.05, HYD-03 0.04, CHS-05 0.03. Mean 0.05.
+- Unit_Cost: base 4500/2800/1200/800/1500 × (1+markup) × drift × noise.
+  Markups: A +0%, B +3%, C +5%, D −2%, E +8%. Drift: monthly random walk σ≈1%
+  + 0.5× inflation pass-through; row noise σ≈2%. Floor 50% base, cap 200%, whole dollars.
+- Backorder_Qty (parent, tractor units): one Binomial(Demand_Units, p) draw per event,
+  p = 0.03 + 0.003 × (mean part delay), cap 0.35. No failure term (kept separate).
+- Production_Plan_Qty (parent): Plan = Demand_Units + Backorder_Qty +
+  round(Demand_Units × (0.10 + 2 × mean part failure) + ±5% jitter). Floor 0.
+- Simulator — 2020-2023 generator (stateful, daily, per Model×Warehouse×Part): on-hand[t] = on-hand[t-1] +
+  arrivals[t] − consumption[t]. Arrivals = orders shifted by (lead + delay), full-fill.
+  Leads (days): E 7, A 10, B 12, C 14, D 18. Consumption = demand + defect fallout.
+  Policy: daily base-stock; target = forecast(lead+7d demand) × (1+0.10+2×part tier);
+  order = max(0, target − position); position = on-hand + on-order − backlog share.
+  Init: at target on 2020-01-01. Sourcing: one supplier per Model×Warehouse×Day,
+  rotating randomly (~20% each). Export ~10k parent snapshots (≈6.85/day) + 5 children each.
+- 2024 extension (seed 2024): 2507 parents + 12535 children, chronological
+  2024-01-01..2024-12-31, opened from end-2023 state. The stepping engine pools
+  differently from the generator: per (model, part) piles (warehouse/supplier
+  origin pooled); policy details live in docs/system_design.md.
+- Boundary: our purchases move OUR on-hand/on-order only; supplier behavior exogenous
+  (shared suppliers, our orders don't drive supplier stock). Fill-rate limits deferred.
+
+RUN SPEC
+- 10k parents + ~50k children, seed 42. Validation: means within 10%, bounds exact,
+  joints/time-structure diffs documented as by-design (seasonality, trend, tiers,
+  delay→backlog linkage, stateful inventory, cost drift, part-units scale ~330 vs ref ~2562).
+- 2024: 2507 parents + 12535 children, seed 2024, chronological; bounds, FK 5:1
+  with all 5 distinct parts per event, uuids disjoint from base, columns match.
+
+MODELS (statistical-first, 2023 holdout)
+- H: net-need arithmetic. 
+- O: seasonal naive + trend (MAE). 
+- S: supplier-tier delay quantiles (MAE) - delay half of its purpose only; learned tiers E 9 -> D 18 days, MAE ~3.7. Scarcity/alternatives half is future work (see below).
+- F: macro-conditioned scaling, pass-through by design (reference macro is independent of demand, multipliers ~=1.0; no exogenous signal in scope). 
+- R: rule-based order/expedite list (stockout rate, avg cover). R objective: minimize purchase + holding cost subject to ≥98% fill rate; expedite when backlog > 5% of plan; substitute when delay forecast exceeds lead-time slack. "Substitute" means alternate supplier only, never alternate material.
+
+MODEL FUTURE WORK
+- S : material-availability prediction needs a scarcity signal (deferred fill-rate/capacity column; generator currently assumes full-fill arrivals). Alternate-material search needs a parts-substitutability table plus the cut world-search LLM agents (supply-web/news). R's substitution then extends to alternate materials.
+
+APIS (REST, one per UI box + approval)
+- /events (Customers Orders Table–H), 
+- /forecast/orders-3mo (Forecast–O&F(R)),
+- /actions (Action Items–R),
+- /orders/proposed + POST approve (Proposed Orders–R),
+- /inventory (Supply Inventory–H), 
+- /production-schedule (Production Schedule–H),
+- /events/{uuid}/parts (drill-down).
+
+REFERENCE (read-only): agent_harness.md, info_source_transcript.txt, SSE Job Guide.pdf,
+example CSV (10k rows; independent uniform draws, corr ±0.02, flat effects).

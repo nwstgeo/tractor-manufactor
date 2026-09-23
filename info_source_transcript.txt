@@ -1,0 +1,63 @@
+Information Sources.pdf - Transcript
+2 pages, image-only PDF rendered and transcribed.
+
+=== PAGE 1 - Top Row (left to right, with arrows) ===
+
+[Info Sources]
+- Tractor Failure Data
+- Customer Demand History
+- Supply chain fluctuation history
+- Supply Delays Now & History
+- News & Information on Farming & Economical Trends
+- Buy vs. Finance vs. Repair vs. Secondary Market
+
+[Topic-specific General LLM Agents]
+- Tractor Failure Compilation
+- Agricultural News
+- Economics Eco-Political News & Data
+- Tractor-specific Economic News
+- Summarize Order / Servicing / Repair / Feedback Data
+- Summarize Supply Chain Trends
+- Summarize Supply Delay Trends
+
+[Trained Models]
+- Hardware Failure & Material Availability & Spare Reqs - H
+- Overall Demand Prediction - O
+- Supply Limitation Prediction - S
+- Forecasting Overall Market - F
+- Recommendation Synthesis - R
+
+=== PAGE 1 - Bottom 5 Boxes (purpose of each trained model) ===
+
+[H]
+- Track what we have
+- Track current orders
+- Track current Production Plan
+- Track needs assuming nothing changes
+- Identify weak points/bottlenecks
+- Identify alternatives for low-supply
+
+[O]
+- Forecasting order trends
+
+[S]
+- Forecasting issues with Material Availability
+- Identify alternatives for potentially scarce materials
+
+[F]
+- Potential markets for expansion
+- Potential issues with current markets
+
+[R]
+- Combine everyone's work
+- i.e. factor H + O + S + F's predictions into H's demand requests
+- Make suggestions for new or change in current markets or design based on H, S, F
+
+=== PAGE 2 - Mock UI (one outer container, six inner boxes) ===
+
+- Customers Orders Table - H (top-left)
+- 3 month Forecastt of Orders - O&F (R) (top-right) [sic in source: "Forecastt" with double-t]
+- Action Items to do - R (middle-top)
+- Proposed Orders to Approve - R (center)
+- Supply Inventory Table - H (bottom-left)
+- Production Schedule - H (bottom-right)

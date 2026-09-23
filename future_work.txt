@@ -1,0 +1,22 @@
+# Future work (converted from _temp_todo.txt open items)
+
+## Open
+1. Demand-noise troughs (minor): synthetic demand min is 145 vs the 50-499 bound
+   (bound holds; widen generator noise only if deeper troughs wanted).
+   See `data/generator/generate_synthetic.py`; validate via
+   `python validate_synthetic.py`.
+2. Experiment with different parameters and algorithm tweaks to optimize for cost 
+   while maintaining fill rate, minimize holding while maintaining fill rate, etc.
+3. Make UI cleaner / appealing
+4. Clean code, add more comments, consider more tests
+5. Support multiple users
+
+## Deferred scope (see `data_scope_and_column_context.txt`)
+- S scarcity/material-availability half (needs fill-rate signal);
+  alternate-material search (needs substitutability table + world-search agents);
+  market expansion, buy-vs-finance, tractor repair.
+
+## Steady state
+- suite green
+- Verify: `python validate_synthetic.py`; `python run_baselines.py`;
+  `python -m unittest discover tests`.

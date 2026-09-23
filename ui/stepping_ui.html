@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Tractor Supply Chain UI Mockup (live)</title>
+<style>body{font-family:sans-serif;margin:16px;max-width:1100px}
+main{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+section{border:1px solid #999;padding:8px}
+.strip{margin-bottom:12px}
+table{border-collapse:collapse;font-size:12px;width:100%}
+td,th{border:1px solid #ccc;padding:2px 4px;text-align:left}
+small{color:#555}.bar{height:12px;background:#eee;position:relative}
+.bar>i{display:block;height:100%;background:#4a4}
+button{margin:2px}.scrollbox{max-height:240px;overflow-y:auto}</style></head>
+<body>
+<h1>Tractor Supply Chain UI Mockup <small>[live stepping run]</small></h1>
+<section class="strip"><h2>Run control <small>[engine]</small></h2>
+<label>start <input id="startDate" value="2024-01-01" size="10"></label>
+<label>cover days <input id="coverDays" value="30" size="4"></label>
+<button onclick="call('init')">init</button>
+<button onclick="start()">start</button>
+<button onclick="advance(1)">advance 1</button>
+<button onclick="advance(7)">advance 7</button>
+<button onclick="approveAll()">approve all + advance</button>
+<span id="cur"></span>
+<div id="score">-</div>
+<div class="bar"><i id="fillbar" style="width:0%"></i></div></section>
+<main>
+<section><h2>Customers Orders Table <small>[H]</small></h2><table id="orders"></table></section>
+<section><h2>3 month Forecast of Orders <small>[O&amp;F (R)]</small></h2><div id="forecast"></div></section>
+<section><h2>Action Items to do <small>[R]</small></h2><table id="actions"></table></section>
+<section><h2>Proposed Orders to Approve <small>[R]</small></h2><div class="scrollbox"><table id="props"></table></div></section>
+<section><h2>Supply Inventory Table <small>[H]</small></h2><table id="inv"></table></section>
+<section><h2>Production Schedule <small>[H]</small></h2><table id="sched"></table></section>
+</main>
+<section class="strip"><h2>History (last 10 steps)</h2><table id="hist"></table></section>
+<script>
+async function req(path, body){
+  const r = await fetch(path, {method: body === undefined ? 'GET' : 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: body === undefined ? undefined : JSON.stringify(body || {})});
+  return r.json();
+}
+async function call(op){ await req('/api/sim/' + op, {}); refresh(); }
+async function start(){
+  const d = document.getElementById('startDate').value;
+  const c = parseInt(document.getElementById('coverDays').value, 10);
+  await req('/api/sim/start', {date: d, opening_cover_days: isNaN(c) ? 30 : c}); refresh();
+}
+async function advance(n){
+  for(let i = 0; i < n; i++){ await req('/api/sim/advance', {}); }
+  refresh();
+}
+async function approveAll(){
+  const ps = await req('/api/sim/proposals');
+  for(const p of ps){ if(p.id) await req('/api/sim/approve', {id: p.id}); }
+  await req('/api/sim/advance', {}); refresh();
+}
+async function approveOne(id){
+  await req('/api/sim/approve', {id}); refresh();
+}
+function rows(head, body){
+  return '<tr>' + head.map(h => `<th>${h}</th>`).join('') + '</tr>' + body;
+}
+function spark(values, dates){
+  const W = 320, H = 140, L = 36, B = 16, T = 6;
+  const n = values.length;
+  const lo = Math.min(...values), hi = Math.max(...values);
+  const span = (hi - lo) || 1;
+  const X = i => (L + i / (n - 1) * (W - L - 4)).toFixed(1);
+  const Y = v => (T + (1 - (v - lo) / span) * (H - T - B)).toFixed(1);
+  const short = d => String(d).slice(5);
+  const yt = v => `<text x="${L - 3}" y="${+Y(v) + 3}" font-size="9" text-anchor="end">${v.toFixed(0)}</text>` +
+    `<line x1="${L}" y1="${Y(v)}" x2="${W - 4}" y2="${Y(v)}" stroke="#ddd" stroke-width="0.5"/>`;
+  const xt = (i, anchor) => `<text x="${X(i)}" y="${H - 4}" font-size="9" text-anchor="${anchor}">${short(dates[i])}</text>`;
+  const pts = values.map((v, i) => `${X(i)},${Y(v)}`).join(' ');
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" style="background:#f7f7f7;border:1px solid #ccc">` +
+    yt(hi) + yt((lo + hi) / 2) + yt(lo) + xt(0, 'start') + xt(Math.floor(n / 2), 'middle') + xt(n - 1, 'end') +
+    `<text x="10" y="${(T + H - B) / 2}" font-size="9" text-anchor="middle" transform="rotate(-90, 10, ${(T + H - B) / 2})">orders</text>` +
+    `<polyline points="${pts}" fill="none" stroke="#4a4" stroke-width="1.5"/></svg>` +
+    `<div><small>${short(dates[0])} to ${short(dates[n - 1])}; min ${lo.toFixed(0)} / max ${hi.toFixed(0)} / last ${values[n - 1].toFixed(0)}</small></div>`;
+}
+async function refresh(){
+  const s = await req('/api/sim/score');
+  document.getElementById('cur').textContent = s.current_date ? 'date=' + s.current_date + ' steps=' + s.steps : '(not started)';
+  document.getElementById('score').innerHTML = s.error ? s.error :
+    `fill_30d=${s.trail_30d_fill.toFixed(3)} (cumulative ${s.fill.toFixed(3)}) gap=${s.gap.toFixed(3)} purchase=${s.purchase.toFixed(0)} holding=${s.holding.toFixed(0)} total=${s.total_cost.toFixed(0)} meets=${s.meets_target}`;
+  document.getElementById('fillbar').style.width = (100 * Math.min(1, (s.trail_30d_fill ?? s.fill) || 0)) + '%';
+  const b = await req('/api/sim/boxes');
+  const ords = Array.isArray(b.customers_orders) ? b.customers_orders.slice(0, 8) : [];
+  document.getElementById('orders').innerHTML = (ords.length && ords[0].error) ? ords[0].error :
+    rows(['date', 'model', 'wh', 'demand', 'backlog'],
+      ords.map(o => `<tr><td>${o.Date}</td><td>${o.Tractor_Model}</td><td>${o.Warehouse_Location}</td><td>${o.Demand_Units}</td><td>${o.Backorder_Qty}</td></tr>`).join(''));
+  const fc = (b.forecast && b.forecast.orders) ? b.forecast : null;
+  document.getElementById('forecast').innerHTML = fc ?
+    `<p>${fc.model}/${fc.warehouse} from ${fc.from} (${fc.orders.length} points)</p>` + spark(fc.orders, fc.dates)
+    : JSON.stringify(b.forecast);
+  const acts = Array.isArray(b.actions) ? b.actions.slice(-8) : [];
+  document.getElementById('actions').innerHTML =
+    rows(['uuid', 'model', 'action'], acts.map(a => `<tr><td>${(a.uuid || '').slice(0, 8)}</td><td>${a.model || ''}</td><td>${a.action || a.error}</td></tr>`).join(''));
+  const ps = Array.isArray(b.proposed_orders) ? b.proposed_orders : [];
+  document.getElementById('props').innerHTML =
+    rows(['part', 'supplier', 'qty', 'cost', ''],
+      ps.map(p => p.error ? `<tr><td colspan="5">${p.error}</td></tr>` :
+        `<tr><td>${p.part}</td><td>${p.supplier}</td><td>${p.qty}</td><td>${p.cost.toFixed(0)}</td><td><button onclick="approveOne('${p.id}')">approve</button></td></tr>`).join(''));
+  const inv = Array.isArray(b.inventory) ? b.inventory : [];
+  const onhand = inv.reduce((a, r) => a + (r.On_Hand || 0), 0);
+  document.getElementById('inv').innerHTML =
+    `<p>on_hand=${onhand} across 5 parts</p><table>` +
+    rows(['part', 'on_hand', 'on_order'],
+      inv.map(r => `<tr><td>${r.Part_SKU}</td><td>${r.On_Hand}</td><td>${r.On_Order}</td></tr>`).join('')) + '</table>';
+  const sch = Array.isArray(b.schedule) ? b.schedule.slice(0, 8) : [];
+  document.getElementById('sched').innerHTML =
+    rows(['date', 'model', 'wh', 'plan', 'backlog'],
+      sch.map(r => `<tr><td>${r.Date}</td><td>${r.Tractor_Model}</td><td>${r.Warehouse_Location}</td><td>${r.Production_Plan_Qty}</td><td>${r.Backorder_Qty}</td></tr>`).join(''));
+  const h = await req('/api/sim/history');
+  document.getElementById('hist').innerHTML =
+    rows(['date', 'need', 'filled', 'fill'],
+      h.filter(e => e.date).slice(-10).map(e => `<tr><td>${e.date}</td><td>${e.need}</td><td>${e.filled}</td><td>${e.fill_so_far.toFixed(3)}</td></tr>`).join(''));
+}
+refresh();
+</script></body></html>
